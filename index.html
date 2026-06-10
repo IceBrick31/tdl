@@ -954,54 +954,54 @@
 
     // --- 日历渲染 ---
     function renderCalendar() {
-        const body = document.getElementById('calBody');
-        const title = document.getElementById('calTitle');
+        const body = document.getElementById('calBody'); 
+        const title = document.getElementById('calTitle'); 
         body.innerHTML = '';
-        const y = currentCalDate.getFullYear();
-        const m = currentCalDate.getMonth();
+        const y = currentCalDate.getFullYear(); 
+        const m = currentCalDate.getMonth(); 
         title.innerText = `${y}年 ${m + 1}月`;
-        let firstDay = new Date(y, m, 1).getDay();
+        let firstDay = new Date(y, m, 1).getDay(); 
         const emptyCells = (firstDay + 6) % 7; 
         const daysInMonth = new Date(y, m + 1, 0).getDate();
 
-        for(let i=0; i<emptyCells; i++) {
-            const cell = document.createElement('div');
-            cell.className = 'day-cell other-month';
-            body.appendChild(cell);
+        for(let i=0; i<emptyCells; i++) { 
+            const cell = document.createElement('div'); 
+            cell.className = 'day-cell other-month'; 
+            body.appendChild(cell); 
         }
 
         const todayStr = new Date().toISOString().split('T')[0];
-        for(let d=1; d<=daysInMonth; d++) {
-            const cell = document.createElement('div');
-            const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-            const dateObj = new Date(y, m, d);
-            const dayOfWeek = dateObj.getDay();
 
-            let classes = ['day-cell'];
-            if (dateStr === todayStr) classes.push('today');
-            if (dayOfWeek === 0 || dayOfWeek === 6) classes.push('weekend-cell');
+        for(let d=1; d<=daysInMonth; d++) {
+            const cell = document.createElement('div'); 
+            const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const dateObj = new Date(y, m, d); 
+            const dayOfWeek = dateObj.getDay();
+            let classes = ['day-cell']; 
+            if (dateStr === todayStr) classes.push('today'); 
+            if (dayOfWeek === 0 || dayOfWeek === 6) classes.push('weekend-cell'); 
             cell.className = classes.join(' ');
 
-            let lunarHtml = '';
-            try {
-                const lunar = Lunar.fromDate(dateObj);
-                let dayText = lunar.getDayInChinese();
-                let isFestival = false;
-                const festivals = lunar.getFestivals();
-                const jieQi = lunar.getJieQi();
-                if (festivals.length > 0) { dayText = festivals[0]; isFestival = true; }
-                else if (jieQi) { dayText = jieQi; isFestival = true; }
-                else if (dayText === '初一') { dayText = lunar.getMonthInChinese() + '月'; }
-                lunarHtml = `<span class="lunar-text ${isFestival?'festival':''}">${dayText}</span>`;
+            let lunarHtml = ''; 
+            try { 
+                const lunar = Lunar.fromDate(dateObj); 
+                let dayText = lunar.getDayInChinese(); 
+                let isFestival = false; 
+                const festivals = lunar.getFestivals(); 
+                const jieQi = lunar.getJieQi(); 
+                if (festivals.length > 0) { dayText = festivals[0]; isFestival = true; } 
+                else if (jieQi) { dayText = jieQi; isFestival = true; } 
+                else if (dayText === '初一') { dayText = lunar.getMonthInChinese() + '月'; } 
+                lunarHtml = `<span class="lunar-text ${isFestival?'festival':''}">${dayText}</span>`; 
             } catch(e) {}
 
-            let weatherHtml = '';
-            const w = weatherData[dateStr];
-            if (w) {
-                const icon = weatherIcons[w.code] || '';
-                weatherHtml = `<span class="day-weather">${icon} ${w.min}°</span>`;
+            let weatherHtml = ''; 
+            const w = weatherData[dateStr]; 
+            if (w) { 
+                const icon = weatherIcons[w.code] || ''; 
+                weatherHtml = `<span class="day-weather">${icon} ${w.min}°</span>`; 
             }
-
+            
             cell.innerHTML = `
                 <div class="day-top">
                     <div style="display:flex; align-items:center;">
@@ -1010,77 +1010,77 @@
                     </div>
                     <div style="display:flex; flex-direction:column; align-items:flex-end;">${lunarHtml}${weatherHtml}</div>
                 </div>`;
+
             let dayTasks = todos.filter(t => t.date === dateStr);
-            
-            // 安全排序：未完成在前，星号多的在前
             dayTasks.sort((a, b) => {
-                if (a.completed !== b.completed) return a.completed ? 1 : -1;
-                const prioA = Number(a.priority) || 0;
-                const prioB = Number(b.priority) || 0;
+                const isDoneA = a.completed || a.skipped ? 1 : 0; 
+                const isDoneB = b.completed || b.skipped ? 1 : 0;
+                if (isDoneA !== isDoneB) return isDoneA - isDoneB;
+                const prioA = Number(a.priority) || 0; 
+                const prioB = Number(b.priority) || 0; 
                 return prioB - prioA; 
             });
 
             dayTasks.forEach(t => {
                 const pill = document.createElement('div');
-                pill.className = `cal-task-pill ${t.completed ? 'completed' : ''}`;
+                const isSkipped = t.skipped; 
+                const isDone = t.completed && !isSkipped;
+                pill.className = `cal-task-pill ${isSkipped ? 'skipped' : (isDone ? 'completed' : '')}`;
                 
-                if (t.categoryId) {
-                    const cat = config.categories.find(c => c.id === t.categoryId);
-                    if (cat) {
-                        pill.style.borderLeftColor = cat.color;
-                        if (!t.completed) pill.style.color = cat.color;
-                    }
+                // 处理分类颜色
+                if (t.categoryId) { 
+                    const cat = config.categories.find(c => c.id === t.categoryId); 
+                    if (cat) { 
+                        pill.style.borderLeftColor = cat.color; 
+                        if (!isDone && !isSkipped) pill.style.color = cat.color; 
+                    } 
                 }
 
-                // 【核心修复】：日历任务条排版优化
-                const descIcon = t.desc ? ' 📝' : '';
-                
-                // 1. 星星极度微缩，字距拉近
-                const safePrio = Number(t.priority) || 0;
+                // 【核心修复】：如果是搁置状态，用 JS 强行覆盖掉分类的颜色，确保变红加划线
+                if (isSkipped) {
+                    pill.style.borderLeftColor = '#d93025';
+                    pill.style.color = '#d93025';
+                    pill.style.backgroundColor = '#fce8e6';
+                    pill.style.textDecoration = 'line-through';
+                }
+
+                const descIcon = t.desc ? ' 📝' : ''; 
+                const safePrio = Number(t.priority) || 0; 
                 const stars = safePrio > 0 ? `<span style="font-size:9px; letter-spacing:-3px; margin-right:4px;">${'⭐'.repeat(safePrio)}</span>` : '';
-
-                // 2. 时间角标：改为右浮动 (float: right)
-                let timeHtml = '';
-                if (t.duration) {
-                    timeHtml = `<span style="float:right; font-size:10px; opacity:0.8; font-weight:bold; margin-left:4px; margin-top:2px;">${t.duration}</span>`;
+                
+                let timeHtml = ''; 
+                if (t.duration) timeHtml = `<span style="float:right; font-size:10px; opacity:0.8; font-weight:bold; margin-left:4px; margin-top:2px;">${t.duration}</span>`;
+                
+                let stCount = ''; 
+                if(t.subtasks && t.subtasks.length > 0) { 
+                    const doneC = t.subtasks.filter(x=>x.completed).length; 
+                    stCount = `<span style="font-size:10px; color:inherit; opacity:0.8; margin-left:4px;">[${doneC}/${t.subtasks.length}]</span>`; 
                 }
-
-                // 3. 去掉强制同行 (Flex)，改回默认的块级显示，允许文字自然换行
+                
                 pill.style.display = 'block';
+                pill.innerHTML = `${timeHtml}${stars}<span style="word-break:break-word; line-height:1.2;">${t.text}${stCount}${descIcon}</span>`;
+                if (t.desc) pill.title = t.desc; 
                 
-                // 组装 HTML：时间漂浮在右侧，星星和文字在左边自动流转
-                pill.innerHTML = `
-                    ${timeHtml}
-                    ${stars}
-                    <span style="word-break:break-word; line-height:1.2;">${t.text}${descIcon}</span>
-                `;
-                
-                if (t.desc) pill.title = t.desc;
                 const taskObj = {...t, desc: t.desc || ''}; 
-                pill.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); };
-                pill.ondblclick = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); };
+                
+                // 绑定点击事件，这里加入了 preventDefault 防止浏览器默认右键
+                pill.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); }; 
+                pill.ondblclick = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); }; 
                 pill.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); };
                 
                 cell.appendChild(pill);
             });
-
-            cell.onclick = (e) => {
-                if(e.target === cell || e.target.closest('.day-top')) {
-                    document.getElementById('inputDate').value = dateStr;
+            
+            cell.onclick = (e) => { 
+                if(e.target === cell || e.target.closest('.day-top')) { 
+                    document.getElementById('inputDate').value = dateStr; 
                     openModal(); 
-                }
-            };
+                } 
+            }; 
             body.appendChild(cell);
         }
-
-        setTimeout(() => {
-            const todayCell = body.querySelector('.today');
-            if (todayCell) {
-                todayCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-            }
-        }, 100);
     }
-    
+
     // --- 保存任务 ---
     function addTask() {
         const text = document.getElementById('inputTask').value.trim();
