@@ -1187,14 +1187,14 @@
                 }
                 const descHtml = t.desc ? `<span style="font-size:12px;margin-left:5px;opacity:0.5;" title="备注: ${t.desc}">📝</span>` : '';
 
-                // 去掉了 ✏️ 按钮，改为点击文字区域触发 onclick="openModalById('${t.id}')"
+                // 注意这里的 oncontextmenu 已经加上了 event.preventDefault();
                 tasksHtml += `
                     <div class="list-task-row" style="flex-direction: column; align-items: stretch;">
                         <div style="display:flex; align-items:flex-start;">
                             <div class="list-checkbox ${checkedClass}" onclick="toggleTask('${t.id}')"></div>
                             <div style="flex:1; cursor:pointer;" 
                                  onclick="openModalById('${t.id}')" 
-                                 oncontextmenu="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})">
+                                 oncontextmenu="event.preventDefault(); showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})">
                                 <div style="${textStyle}; line-height:1.4; font-size:15px;">${catTag}${stars}${t.text}${loopTag}${durationTag}${descHtml}</div>
                                 ${subtasksHtml}
                             </div>
@@ -1205,7 +1205,7 @@
             listEl.appendChild(groupEl);
         });
     }
-
+    
     function renderDailyView() {
         if (!currentDailyDate) return;
         const [y, m, d] = currentDailyDate.split('-'); const dateObj = new Date(y, m-1, d);
@@ -1236,14 +1236,14 @@
             }
             const descHtml = t.desc ? `<div style="font-size:12px; color:#777; margin-top:4px; padding:6px; background:#f9f9f9; border-radius:4px; border-left:2px solid #ddd; white-space:pre-wrap;">${t.desc}</div>` : '';
 
-            // 去掉了 ✏️ 按钮，改为点击文字区域触发 onclick="openModalById('${t.id}')"
+            // 注意这里的 oncontextmenu 已经加上了 event.preventDefault();
             tasksHtml += `
                 <div class="list-task-row" style="flex-direction: column; align-items: stretch;">
                     <div style="display:flex; align-items:flex-start;">
                         <div class="list-checkbox ${checkedClass}" onclick="toggleTask('${t.id}')"></div>
                         <div style="flex:1; cursor:pointer;" 
                              onclick="openModalById('${t.id}')" 
-                             oncontextmenu="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})">
+                             oncontextmenu="event.preventDefault(); showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})">
                             <div style="${textStyle}; line-height:1.4; font-size:15px;">${catTag}${stars}${t.text}${loopTag}${durationTag}</div>
                             ${subtasksHtml}
                             ${descHtml}
@@ -1306,15 +1306,17 @@
         }
     }
     
+    //  右键菜单的点击分发
     function menuAction(action) {
         if (!selectedTask) return;
         if (action === 'edit') { openModalById(selectedTask.id); }
         else if (action === 'status_todo') { updateTaskStatus(selectedTask.id, 'todo'); }
         else if (action === 'status_done') { updateTaskStatus(selectedTask.id, 'done'); }
         else if (action === 'status_skipped') { updateTaskStatus(selectedTask.id, 'skipped'); }
-        else if (action === 'delete') { if (confirm('确定删除此任务？')) { todos = todos.filter(t => t.id !== selectedTask.id); saveData(); renderCurrentView(); } } 
+        else if (action === 'delete') { if (confirm('确定彻底删除此任务？')) { todos = todos.filter(t => t.id !== selectedTask.id); saveData(); renderCurrentView(); } } 
         else if (action === 'deleteFuture') { if (confirm('删除此任务及后续？')) { todos = todos.filter(t => { const isSame = selectedTask.groupId ? (t.groupId === selectedTask.groupId) : (t.text === selectedTask.text); return !(isSame && new Date(t.date) >= new Date(selectedTask.date)); }); saveData(); renderCurrentView(); } }
-        hideContextMenu(); selectedTask = null; 
+        hideContextMenu(); 
+        selectedTask = null; 
     }
 
     function toggleTask(id) { 
@@ -1573,13 +1575,15 @@
         const t = todos.find(x => x.id == id);
         if(t) { selectedTask = t; openModal(t); } 
     }
+    // 1. 确保核心的状态更新函数存在 (处理搁置/恢复/完成的逻辑)
     function updateTaskStatus(id, type) {
         const t = todos.find(x => x.id == id);
         if(t) {
             if(type === 'todo') { t.completed = false; t.skipped = false; }
             if(type === 'done') { t.completed = true; t.skipped = false; }
             if(type === 'skipped') { t.completed = false; t.skipped = true; }
-            saveData(); renderCurrentView();
+            saveData(); 
+            renderCurrentView(); // 立刻刷新界面
         }
     }
     
