@@ -289,6 +289,13 @@
         }
         .star-rating span:hover { transform: scale(1.2); }
         .star-rating span.active { color: #fbbc04; /* 经典的星标黄 */ }
+        
+        .list-checkbox.skipped { border-color: #d93025; background: #fce8e6; display:flex; align-items:center; justify-content:center; }
+        .list-checkbox.skipped::after { content: '×'; font-size:16px; color:#d93025; position:static; transform:none; border:none; width:auto; height:auto; margin-top:-2px;}
+        .cal-task-pill.skipped { background: #fce8e6 !important; color: #d93025 !important; border-left-color: #d93025 !important; text-decoration: line-through; opacity: 0.8; }
+        .edit-btn-sm { margin-left:auto; font-size:14px; cursor:pointer; opacity:0.3; padding:5px; transition:0.2s; user-select:none; }
+        .edit-btn-sm:hover { opacity:1; transform:scale(1.1); }
+        
     </style>
 </head>
 <body>
@@ -433,7 +440,14 @@
             <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">备注说明 (不显示在列表)</label>
             <textarea id="inputDesc" placeholder="添加详细描述、链接或备注..." style="width:100%; height:60px; padding:8px; border:1px solid #ddd; border-radius:4px; font-family:inherit; font-size:14px; resize:none; box-sizing:border-box;"></textarea>
         </div>
-        
+        <div style="margin-top:12px; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;">
+            <label style="font-size:12px; font-weight:bold; color:#444; display:block; margin-bottom:8px;">✅ 子任务拆解 (把大任务切小)</label>
+            <div id="modalSubtasks" style="margin-bottom: 8px;"></div>
+            <div class="input-row" style="background:#fff; border-radius:4px; padding:2px;">
+                <input type="text" id="newSubtaskInput" placeholder="输入步骤 (回车添加)..." style="font-size:13px; padding:6px; border:none; outline:none; flex:1;" onkeypress="if(event.key==='Enter'){event.preventDefault();addSubtask();}">
+                <button class="btn" onclick="addSubtask()" style="padding:4px 10px; font-size:12px; background:var(--primary-light);">添加</button>
+            </div>
+        </div>
         <div id="recurrenceSection">
              <div style="font-size:12px; color:#666; margin-top:10px;">重复</div>
              <div class="input-row" style="background:#f1f3f4; padding:10px; border-radius:8px;">
@@ -1138,112 +1152,106 @@
 
     // --- 新版列表渲染 (包含：智能展开 + 倒序 + 星标 + 分类 + 耗时 + 备注) ---
     function renderList() {
-        const listEl = document.getElementById('taskList');
-        listEl.innerHTML = '';
-        
-        if (todos.length === 0) {
-            listEl.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">暂无任务，去日历添加吧~</div>';
-            return;
-        }
-
-        // 1. 按日期倒序排列
+        const listEl = document.getElementById('taskList'); listEl.innerHTML = '';
+        if (todos.length === 0) { listEl.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">暂无任务，去日历添加吧~</div>'; return; }
         const sorted = todos.slice().sort((a,b) => new Date(b.date) - new Date(a.date));
-
-        // 2. 按日期分组
-        const groups = {}; 
-        sorted.forEach(t => {
-            if (!groups[t.date]) groups[t.date] = [];
-            groups[t.date].push(t);
-        });
-
-        // 准备今天的日期对象 (用于计算智能展开的时间差)
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-        // 3. 遍历并生成 HTML
+        const groups = {}; sorted.forEach(t => { if (!groups[t.date]) groups[t.date] = []; groups[t.date].push(t); });
+        const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
         const sortedDates = Object.keys(groups).sort((a,b) => new Date(b) - new Date(a));
 
         sortedDates.forEach(dateStr => {
             let groupTasks = groups[dateStr];
-            
-            // 【核心排序】：分组内部，未完成的在前，星号多的在前
-            groupTasks.sort((a, b) => {
-                if (a.completed !== b.completed) return a.completed ? 1 : -1;
-                const prioA = Number(a.priority) || 0;
-                const prioB = Number(b.priority) || 0;
-                return prioB - prioA;
-            });
-
-            // 计算是否应该展开 (过去5天 ~ 未来3天)
-            const [gYear, gMonth, gDay] = dateStr.split('-').map(Number);
-            const targetDate = new Date(gYear, gMonth - 1, gDay); 
-            const diffTime = targetDate - today;
-            const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-            
-            const shouldExpand = (diffDays >= -5 && diffDays <= 3);
-            const collapseClass = shouldExpand ? '' : 'collapsed';
-
-            const weekDay = "日一二三四五六".charAt(targetDate.getDay());
-            
-            const groupEl = document.createElement('div');
-            groupEl.className = 'task-group';
-            
+            groupTasks.sort((a, b) => { const isDoneA = a.completed || a.skipped ? 1 : 0; const isDoneB = b.completed || b.skipped ? 1 : 0; if (isDoneA !== isDoneB) return isDoneA - isDoneB; return (Number(b.priority)||0) - (Number(a.priority)||0); });
+            const [gYear, gMonth, gDay] = dateStr.split('-').map(Number); const targetDate = new Date(gYear, gMonth - 1, gDay); 
+            const diffDays = Math.round((targetDate - today) / (1000 * 60 * 60 * 24));
+            const shouldExpand = (diffDays >= -5 && diffDays <= 3); const collapseClass = shouldExpand ? '' : 'collapsed';
+            const groupEl = document.createElement('div'); groupEl.className = 'task-group';
             let tasksHtml = '';
+            
             groupTasks.forEach(t => {
-                const checkedClass = t.completed ? 'checked' : '';
-                const textStyle = t.completed ? 'text-decoration:line-through;color:#aaa' : '';
+                const isSkipped = t.skipped; const isDone = t.completed && !isSkipped;
+                const checkedClass = isSkipped ? 'skipped' : (isDone ? 'checked' : '');
+                const textStyle = isSkipped ? 'text-decoration:line-through;color:#d93025;opacity:0.8;' : (isDone ? 'text-decoration:line-through;color:#aaa' : '');
                 const loopTag = t.tag ? `<span style="font-size:10px;background:#f1f3f4;padding:1px 4px;border-radius:4px;margin-left:5px;color:#666">🔄</span>` : '';
-                
-                // 1. 分类标签
-                let catTag = '';
-                if (t.categoryId) {
-                    const cat = config.categories.find(c => c.id === t.categoryId);
-                    if (cat) {
-                        catTag = `<span class="cat-tag" style="background-color:${cat.color}">${cat.name}</span>`;
-                    }
-                }
-
-                // 2. 【核心修复：星标】
-                const safePrio = Number(t.priority) || 0;
-                const stars = safePrio > 0 ? `<span style="font-size:11px; margin-right:4px;">${'⭐'.repeat(safePrio)}</span>` : '';
-
-                // 3. 备注图标
-                const descIcon = t.desc ? `<span style="font-size:12px;margin-left:5px;opacity:0.5;">📝</span>` : '';
-                const tooltipTitle = t.desc ? `title="备注: ${t.desc}"` : '';
-
-                // 4. 耗时标签
+                let catTag = ''; if (t.categoryId) { const cat = config.categories.find(c => c.id === t.categoryId); if (cat) catTag = `<span class="cat-tag" style="background-color:${cat.color}">${cat.name}</span>`; }
+                const safePrio = Number(t.priority) || 0; const stars = safePrio > 0 ? `<span style="font-size:11px; margin-right:4px;">${'⭐'.repeat(safePrio)}</span>` : '';
                 const durationTag = t.duration ? `<span style="font-size:11px; color:#aaa; margin-left:8px; border:1px solid #eee; padding:1px 4px; border-radius:4px;">⏳ ${t.duration}</span>` : '';
+                
+                let subtasksHtml = '';
+                if(t.subtasks && t.subtasks.length > 0) {
+                    subtasksHtml = '<div style="margin-top:6px; margin-bottom:4px; display:flex; flex-direction:column; gap:6px; padding-left:10px; border-left:2px solid #eee;">';
+                    t.subtasks.forEach(st => {
+                        const stChecked = st.completed ? 'checked' : ''; const stStyle = st.completed ? 'text-decoration:line-through;color:#aaa' : 'color:#555';
+                        subtasksHtml += `<div style="display:flex; align-items:center; font-size:13px;" onclick="event.stopPropagation()"><div class="list-checkbox ${stChecked}" style="width:14px;height:14px;margin-right:8px;border-width:1px;" onclick="toggleSubtask('${t.id}', '${st.id}')"></div><span style="${stStyle}; flex:1;">${st.text}</span></div>`;
+                    }); subtasksHtml += '</div>';
+                }
+                const descHtml = t.desc ? `<span style="font-size:12px;margin-left:5px;opacity:0.5;" title="备注: ${t.desc}">📝</span>` : '';
 
-                const taskObj = {...t, desc: t.desc || ''}; 
-                // 组装 HTML，注意顺序：分类 -> 星标 -> 文字 -> 备注图标 -> 循环图标 -> 耗时
+                // 去掉了 ✏️ 按钮，改为点击文字区域触发 onclick="openModalById('${t.id}')"
                 tasksHtml += `
-                    <div class="list-task-row" ${tooltipTitle}>
-                        <div class="list-checkbox ${checkedClass}" onclick="toggleTask('${t.id}')"></div>
-                        <div style="flex:1; cursor:pointer;" 
-                             ondblclick="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})" 
-                             oncontextmenu="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})"
-                        >
-                            <div style="${textStyle}; line-height:1.4;">${catTag}${stars}${t.text}${descIcon}${loopTag}${durationTag}</div>
+                    <div class="list-task-row" style="flex-direction: column; align-items: stretch;">
+                        <div style="display:flex; align-items:flex-start;">
+                            <div class="list-checkbox ${checkedClass}" onclick="toggleTask('${t.id}')"></div>
+                            <div style="flex:1; cursor:pointer;" 
+                                 onclick="openModalById('${t.id}')" 
+                                 oncontextmenu="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})">
+                                <div style="${textStyle}; line-height:1.4; font-size:15px;">${catTag}${stars}${t.text}${loopTag}${durationTag}${descHtml}</div>
+                                ${subtasksHtml}
+                            </div>
                         </div>
-                    </div>
-                `;
+                    </div>`;
             });
-
-            groupEl.innerHTML = `
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span>${dateStr} <span style="font-weight:normal;font-size:12px;margin-left:5px;color:#888">周${weekDay}</span></span>
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <span class="count">${groupTasks.length}</span>
-                        <span class="group-arrow ${collapseClass}">▼</span>
-                    </div>
-                </div>
-                <div class="group-body ${collapseClass}">
-                    ${tasksHtml}
-                </div>
-            `;
-
+            groupEl.innerHTML = `<div class="group-header" onclick="toggleGroup(this)"><span>${dateStr} <span style="font-weight:normal;font-size:12px;margin-left:5px;color:#888">周${"日一二三四五六".charAt(targetDate.getDay())}</span></span><div style="display:flex;align-items:center;gap:10px;"><span class="count">${groupTasks.length}</span><span class="group-arrow ${collapseClass}">▼</span></div></div><div class="group-body ${collapseClass}">${tasksHtml}</div>`;
             listEl.appendChild(groupEl);
         });
+    }
+
+    function renderDailyView() {
+        if (!currentDailyDate) return;
+        const [y, m, d] = currentDailyDate.split('-'); const dateObj = new Date(y, m-1, d);
+        document.getElementById('dailyTitle').innerText = `${y}年${m}月${d}日 (周${"日一二三四五六".charAt(dateObj.getDay())})`;
+        const listEl = document.getElementById('dailyTaskList'); listEl.innerHTML = '';
+        let dayTasks = todos.filter(t => t.date === currentDailyDate);
+        
+        dayTasks.sort((a, b) => { const isDoneA = a.completed || a.skipped ? 1 : 0; const isDoneB = b.completed || b.skipped ? 1 : 0; if (isDoneA !== isDoneB) return isDoneA - isDoneB; return (Number(b.priority)||0) - (Number(a.priority)||0); });
+        if (dayTasks.length === 0) { listEl.innerHTML = '<div style="text-align:center; color:#999; padding:30px 10px; font-size:14px;">📭 这一天很清闲，没有任何任务~</div>'; return; }
+
+        let tasksHtml = '';
+        dayTasks.forEach(t => {
+            const isSkipped = t.skipped; const isDone = t.completed && !isSkipped;
+            const checkedClass = isSkipped ? 'skipped' : (isDone ? 'checked' : '');
+            const textStyle = isSkipped ? 'text-decoration:line-through;color:#d93025;opacity:0.8;' : (isDone ? 'text-decoration:line-through;color:#aaa' : '');
+            const loopTag = t.tag ? `<span style="font-size:10px;background:#f1f3f4;padding:1px 4px;border-radius:4px;margin-left:5px;color:#666">🔄</span>` : '';
+            let catTag = ''; if (t.categoryId) { const cat = config.categories.find(c => c.id === t.categoryId); if (cat) catTag = `<span class="cat-tag" style="background-color:${cat.color}">${cat.name}</span>`; }
+            const safePrio = Number(t.priority) || 0; const stars = safePrio > 0 ? `<span style="font-size:11px; margin-right:4px;">${'⭐'.repeat(safePrio)}</span>` : '';
+            const durationTag = t.duration ? `<span style="font-size:11px; color:#aaa; margin-left:8px; border:1px solid #eee; padding:1px 4px; border-radius:4px;">⏳ ${t.duration}</span>` : '';
+            
+            let subtasksHtml = '';
+            if(t.subtasks && t.subtasks.length > 0) {
+                subtasksHtml = '<div style="margin-top:6px; margin-bottom:4px; display:flex; flex-direction:column; gap:6px; padding-left:10px; border-left:2px solid #eee;">';
+                t.subtasks.forEach(st => {
+                    const stChecked = st.completed ? 'checked' : ''; const stStyle = st.completed ? 'text-decoration:line-through;color:#aaa' : 'color:#555';
+                    subtasksHtml += `<div style="display:flex; align-items:center; font-size:13px;" onclick="event.stopPropagation()"><div class="list-checkbox ${stChecked}" style="width:14px;height:14px;margin-right:8px;border-width:1px;" onclick="toggleSubtask('${t.id}', '${st.id}')"></div><span style="${stStyle}; flex:1;">${st.text}</span></div>`;
+                }); subtasksHtml += '</div>';
+            }
+            const descHtml = t.desc ? `<div style="font-size:12px; color:#777; margin-top:4px; padding:6px; background:#f9f9f9; border-radius:4px; border-left:2px solid #ddd; white-space:pre-wrap;">${t.desc}</div>` : '';
+
+            // 去掉了 ✏️ 按钮，改为点击文字区域触发 onclick="openModalById('${t.id}')"
+            tasksHtml += `
+                <div class="list-task-row" style="flex-direction: column; align-items: stretch;">
+                    <div style="display:flex; align-items:flex-start;">
+                        <div class="list-checkbox ${checkedClass}" onclick="toggleTask('${t.id}')"></div>
+                        <div style="flex:1; cursor:pointer;" 
+                             onclick="openModalById('${t.id}')" 
+                             oncontextmenu="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})">
+                            <div style="${textStyle}; line-height:1.4; font-size:15px;">${catTag}${stars}${t.text}${loopTag}${durationTag}</div>
+                            ${subtasksHtml}
+                            ${descHtml}
+                        </div>
+                    </div>
+                </div>`;
+        });
+        listEl.innerHTML = tasksHtml;
     }
     
     // 折叠/展开分组的逻辑
@@ -1263,40 +1271,25 @@
 
     // --- 上下文菜单与编辑 ---
     function showContextMenu(e, task) {
-        selectedTask = task; 
-        const menu = document.getElementById('contextMenu');
-        
-        // 【新增】如果有备注，在菜单顶部显示出来
-        // 我们先清空之前动态添加的备注区（如果有的话），简单粗暴重置 innerHTML 可能会冲掉事件绑定
-        // 所以建议直接在 HTML 里预留一个位置，或者每次重新构建
-        
-        // 简单做法：重建菜单内容
+        selectedTask = task; const menu = document.getElementById('contextMenu');
         let descHtml = '';
-        if (task.desc) {
-            descHtml = `
-                <div style="padding:10px 15px; font-size:12px; color:#555; background:#fffbe6; border-bottom:1px solid #eee; line-height:1.4; max-height:100px; overflow-y:auto; white-space:pre-wrap;">
-                    <b>📝 备注：</b><br>${task.desc}
-                </div>
-            `;
-        }
-
+        if (task.desc) { descHtml = `<div style="padding:10px 15px; font-size:12px; color:#555; background:#fffbe6; border-bottom:1px solid #eee; line-height:1.4; max-height:100px; overflow-y:auto; white-space:pre-wrap;"><b>📝 备注：</b><br>${task.desc}</div>`; }
         menu.innerHTML = `
             ${descHtml}
-            <div style="text-align:center; padding:5px; color:#ccc; font-size:12px;">操作选项</div>
-            <div class="context-menu-item" onclick="menuAction('edit')"><span>✏️</span> 编辑任务</div>
-            <div class="context-menu-item" onclick="menuAction('toggle')"><span>✅</span> 切换完成</div>
+            <div class="context-menu-item" onclick="menuAction('edit')"><span>✏️</span> 编辑详细信息</div>
             <div style="height:1px; background:#eee; margin:2px 0;"></div>
-            <div class="context-menu-item danger" onclick="menuAction('delete')"><span>🗑️</span> 删除此条</div>
-            <div class="context-menu-item danger" onclick="menuAction('deleteFuture')"><span>⏩</span> 删除此条及后续</div>
+            <div class="context-menu-item" onclick="menuAction('status_todo')"><span>🔄</span> 恢复为待办状态</div>
+            <div class="context-menu-item" onclick="menuAction('status_done')"><span>✅</span> 标记为完美完成</div>
+            <div class="context-menu-item" onclick="menuAction('status_skipped')" style="color:#d93025;"><span>❌</span> 标记未做/搁置此项</div>
+            <div style="height:1px; background:#eee; margin:2px 0;"></div>
+            <div class="context-menu-item danger" onclick="menuAction('delete')"><span>🗑️</span> 彻底删除此条记录</div>
+            <div class="context-menu-item danger" onclick="menuAction('deleteFuture')"><span>⏩</span> 删除此条及后续循环</div>
             <div class="context-menu-item" onclick="hideContextMenu()" style="justify-content:center; color:#666; border-top:5px solid #f5f5f7; margin-top:5px;">取消</div>
         `;
-
-        // ... 显示菜单的定位逻辑保持不变 ...
         if(window.innerWidth <= 768) { document.getElementById('modalOverlay').style.display = 'block'; document.querySelector('.modal').style.display = 'none'; }
         menu.style.display = 'block';
         if(window.innerWidth > 768) {
-            let x = e.clientX; let y = e.clientY;
-            const rect = menu.getBoundingClientRect();
+            let x = e.clientX; let y = e.clientY; const rect = menu.getBoundingClientRect();
             if (x + rect.width > window.innerWidth) x -= rect.width;
             if (y + rect.height > window.innerHeight) y -= rect.height;
             menu.style.left = x + 'px'; menu.style.top = y + 'px';
@@ -1315,15 +1308,23 @@
     
     function menuAction(action) {
         if (!selectedTask) return;
-        if (action === 'edit') { openModal(selectedTask); }
-        else if (action === 'toggle') { toggleTask(selectedTask.id); } 
+        if (action === 'edit') { openModalById(selectedTask.id); }
+        else if (action === 'status_todo') { updateTaskStatus(selectedTask.id, 'todo'); }
+        else if (action === 'status_done') { updateTaskStatus(selectedTask.id, 'done'); }
+        else if (action === 'status_skipped') { updateTaskStatus(selectedTask.id, 'skipped'); }
         else if (action === 'delete') { if (confirm('确定删除此任务？')) { todos = todos.filter(t => t.id !== selectedTask.id); saveData(); renderCurrentView(); } } 
         else if (action === 'deleteFuture') { if (confirm('删除此任务及后续？')) { todos = todos.filter(t => { const isSame = selectedTask.groupId ? (t.groupId === selectedTask.groupId) : (t.text === selectedTask.text); return !(isSame && new Date(t.date) >= new Date(selectedTask.date)); }); saveData(); renderCurrentView(); } }
-        hideContextMenu();
-        selectedTask = null; 
+        hideContextMenu(); selectedTask = null; 
     }
 
-    function toggleTask(id) { const t = todos.find(x => x.id == id); if(t) { t.completed = !t.completed; saveData(); renderCurrentView(); } }
+    function toggleTask(id) { 
+        const t = todos.find(x => x.id == id); 
+        if(t) { 
+            if(t.skipped) { t.skipped = false; t.completed = false; } 
+            else { t.completed = !t.completed; }
+            saveData(); renderCurrentView(); 
+        } 
+    }
     function switchView(view) {
         document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
         
@@ -1384,49 +1385,32 @@
         const btnCopy = document.getElementById('btnCopy'); 
         
         catSelect.innerHTML = '<option value="">默认 (无分类)</option>';
-        config.categories.forEach(c => {
-            catSelect.innerHTML += `<option value="${c.id}" style="color:${c.color}">🏷️ ${c.name}</option>`;
-        });
-
-        overlay.style.display = 'flex';
-        modal.style.display = 'flex';
+        config.categories.forEach(c => { catSelect.innerHTML += `<option value="${c.id}" style="color:${c.color}">🏷️ ${c.name}</option>`; });
+        overlay.style.display = 'flex'; modal.style.display = 'flex';
 
         if (taskToEdit && taskToEdit.id) {
-            editingTaskId = taskToEdit.id;
-            title.innerText = '编辑任务';
-            taskInput.value = taskToEdit.text || ''; 
-            dateInput.value = taskToEdit.date;
+            editingTaskId = taskToEdit.id; title.innerText = '编辑任务';
+            taskInput.value = taskToEdit.text || ''; dateInput.value = taskToEdit.date;
             catSelect.value = taskToEdit.categoryId || '';
-            
-            // 为了防止旧数据里没有这些字段报错，我们加个防御
             if(durationInput) durationInput.value = taskToEdit.duration || ''; 
             if(descInput) descInput.value = taskToEdit.desc || ''; 
-            
-            // 【核心】：回显对应的星级
             setPriority(Number(taskToEdit.priority) || 0);
-            
-            recurSection.style.display = 'none';
-            editHint.style.display = 'block';
+            recurSection.style.display = 'none'; editHint.style.display = 'block';
             if(btnCopy) btnCopy.style.display = 'block'; 
+            tempSubtasks = taskToEdit.subtasks ? JSON.parse(JSON.stringify(taskToEdit.subtasks)) : [];
         } else {
-            editingTaskId = null;
-            title.innerText = '新任务';
-            taskInput.value = '';
+            editingTaskId = null; title.innerText = '新任务'; taskInput.value = '';
             if(!dateInput.value) dateInput.valueAsDate = new Date();
             catSelect.value = '';
-            
-            if(durationInput) durationInput.value = ''; 
-            if(descInput) descInput.value = ''; 
-            
-            // 【核心】：新建任务默认 0 颗星
+            if(durationInput) durationInput.value = ''; if(descInput) descInput.value = ''; 
             setPriority(0);
-            
-            recurSection.style.display = 'block';
-            editHint.style.display = 'none';
-            document.getElementById('recurUnit').value = 'none';
-            document.getElementById('endDateRow').style.display = 'none';
+            recurSection.style.display = 'block'; editHint.style.display = 'none';
+            document.getElementById('recurUnit').value = 'none'; document.getElementById('endDateRow').style.display = 'none';
             if(btnCopy) btnCopy.style.display = 'none';
+            tempSubtasks = [];
         }
+        renderModalSubtasks();
+        document.getElementById('newSubtaskInput').value = '';
         taskInput.focus();
     }
 
@@ -1437,11 +1421,7 @@
         const catId = document.getElementById('inputCategory').value;
         const duration = document.getElementById('inputDuration') ? document.getElementById('inputDuration').value : ''; 
         const desc = document.getElementById('inputDesc') ? document.getElementById('inputDesc').value.trim() : '';
-        
-        // 【核心提取】：获取存进去的星标值
-        const priorityInput = document.getElementById('inputPriority');
-        const priority = priorityInput ? Number(priorityInput.value) : 0;
-        
+        const priority = Number(document.getElementById('inputPriority').value) || 0;
         const interval = parseInt(document.getElementById('recurInterval').value) || 1;
         const unit = document.getElementById('recurUnit').value;
         const endDateVal = document.getElementById('inputEndDate').value;
@@ -1451,29 +1431,21 @@
         if (editingTaskId) {
             const taskIndex = todos.findIndex(t => t.id === editingTaskId);
             if (taskIndex > -1) {
-                todos[taskIndex].text = text;
-                todos[taskIndex].date = dateVal;
-                todos[taskIndex].categoryId = catId;
-                todos[taskIndex].duration = duration; 
-                todos[taskIndex].desc = desc;
-                todos[taskIndex].priority = priority;  // 【更新星标】
+                todos[taskIndex].text = text; todos[taskIndex].date = dateVal;
+                todos[taskIndex].categoryId = catId; todos[taskIndex].duration = duration; 
+                todos[taskIndex].desc = desc; todos[taskIndex].priority = priority;
+                todos[taskIndex].subtasks = JSON.parse(JSON.stringify(tempSubtasks));
             }
         } else {
-            const groupId = Date.now().toString(); 
-            const newTasks = [];
+            const groupId = Date.now().toString(); const newTasks = [];
             const createOne = (dStr) => ({ 
-                id: Math.random().toString(36).substr(2, 9), 
-                groupId, text, date: dStr, completed: false, 
-                categoryId: catId, 
-                duration: duration, 
-                desc: desc,
-                priority: priority, // 【新建保存星标】
+                id: Math.random().toString(36).substr(2, 9), groupId, text, date: dStr, completed: false, skipped: false,
+                categoryId: catId, duration: duration, desc: desc, priority: priority, 
+                subtasks: JSON.parse(JSON.stringify(tempSubtasks)),
                 tag: unit !== 'none' ? '循环' : '' 
             });
 
-            if (unit === 'none') { 
-                newTasks.push(createOne(dateVal)); 
-            } else {
+            if (unit === 'none') { newTasks.push(createOne(dateVal)); } else {
                 let cursor = new Date(dateVal);
                 let stopDate = endDateVal ? new Date(endDateVal) : new Date(cursor);
                 if (!endDateVal) stopDate.setFullYear(stopDate.getFullYear() + 1);
@@ -1486,18 +1458,12 @@
                         case 'week': cursor.setDate(cursor.getDate() + (interval * 7)); break;
                         case 'month': cursor.setMonth(cursor.getMonth() + interval); if (cursor.getDate() !== originalDay) cursor.setDate(0); break;
                         case 'year': cursor.setFullYear(cursor.getFullYear() + interval); break;
-                    }
-                    safeCount++;
+                    } safeCount++;
                 }
-            }
-            todos = [...todos, ...newTasks];
+            } todos = [...todos, ...newTasks];
         }
-
-        saveData(); 
-        closeModal(); 
-        renderCurrentView(); // 重新渲染日历/列表，小星星就会出现了
+        saveData(); closeModal(); renderCurrentView();
     }
-
     // --- 复制任务逻辑 ---
     function copyTask() {
         if(!confirm('确定要复制当前内容为一个新任务吗？')) return;
@@ -1576,72 +1542,47 @@
         openModal();
     }
 
-    // 渲染单日视图的内容
-    function renderDailyView() {
-        if (!currentDailyDate) return;
-        
-        const [y, m, d] = currentDailyDate.split('-');
-        const dateObj = new Date(y, m-1, d);
-        const weekDay = "日一二三四五六".charAt(dateObj.getDay());
-        
-        // 设置标题
-        document.getElementById('dailyTitle').innerText = `${y}年${m}月${d}日 (周${weekDay})`;
-        
-        const listEl = document.getElementById('dailyTaskList');
-        listEl.innerHTML = '';
-
-        let dayTasks = todos.filter(t => t.date === currentDailyDate);
-        
-        // 排序规则与其它地方保持一致
-        dayTasks.sort((a, b) => {
-            if (a.completed !== b.completed) return a.completed ? 1 : -1;
-            const prioA = Number(a.priority) || 0;
-            const prioB = Number(b.priority) || 0;
-            return prioB - prioA;
-        });
-
-        if (dayTasks.length === 0) {
-            listEl.innerHTML = '<div style="text-align:center; color:#999; padding:30px 10px; font-size:14px;">📭 这一天很清闲，没有任何任务~</div>';
-            return;
-        }
-
-        let tasksHtml = '';
-        dayTasks.forEach(t => {
-            const checkedClass = t.completed ? 'checked' : '';
-            const textStyle = t.completed ? 'text-decoration:line-through;color:#aaa' : '';
-            const loopTag = t.tag ? `<span style="font-size:10px;background:#f1f3f4;padding:1px 4px;border-radius:4px;margin-left:5px;color:#666">🔄</span>` : '';
-            
-            let catTag = '';
-            if (t.categoryId) {
-                const cat = config.categories.find(c => c.id === t.categoryId);
-                if (cat) catTag = `<span class="cat-tag" style="background-color:${cat.color}">${cat.name}</span>`;
-            }
-
-            const safePrio = Number(t.priority) || 0;
-            const stars = safePrio > 0 ? `<span style="font-size:11px; margin-right:4px;">${'⭐'.repeat(safePrio)}</span>` : '';
-
-            // 单日视图中，备注信息直接展开显示，不隐藏
-            const descHtml = t.desc ? `<div style="font-size:12px; color:#777; margin-top:4px; padding:6px; background:#f9f9f9; border-radius:4px; border-left:2px solid #ddd; word-break:break-word; white-space:pre-wrap;">${t.desc}</div>` : '';
-            const durationTag = t.duration ? `<span style="font-size:11px; color:#aaa; margin-left:8px; border:1px solid #eee; padding:1px 4px; border-radius:4px;">⏳ ${t.duration}</span>` : '';
-
-            tasksHtml += `
-                <div class="list-task-row" style="flex-direction: column; align-items: stretch;">
-                    <div style="display:flex; align-items:flex-start;">
-                        <div class="list-checkbox ${checkedClass}" onclick="toggleTask('${t.id}')"></div>
-                        <div style="flex:1; cursor:pointer;" 
-                             ondblclick="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})" 
-                             oncontextmenu="showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})"
-                        >
-                            <div style="${textStyle}; line-height:1.4; font-size:15px;">${catTag}${stars}${t.text}${loopTag}${durationTag}</div>
-                            ${descHtml}
-                        </div>
-                    </div>
-                </div>
-            `;
-        });
-        listEl.innerHTML = tasksHtml;
+    
+    let tempSubtasks = [];
+    function renderModalSubtasks() {
+        const container = document.getElementById('modalSubtasks');
+        container.innerHTML = tempSubtasks.map((st, idx) => `
+            <div style="display:flex; align-items:center; margin-bottom:6px; gap:8px;">
+                <input type="checkbox" ${st.completed ? 'checked' : ''} onchange="tempSubtasks[${idx}].completed = this.checked" style="width:auto; cursor:pointer;">
+                <input type="text" value="${st.text}" onchange="tempSubtasks[${idx}].text = this.value" style="flex:1; font-size:13px; padding:4px; border:none; border-bottom:1px dashed #ddd; outline:none; background:transparent;">
+                <span onclick="tempSubtasks.splice(${idx}, 1); renderModalSubtasks()" style="color:#d93025; cursor:pointer; font-size:16px;">×</span>
+            </div>
+        `).join('');
     }
-
+    function addSubtask() {
+        const input = document.getElementById('newSubtaskInput');
+        if(input.value.trim()){
+            tempSubtasks.push({ id: Date.now().toString(), text: input.value.trim(), completed: false });
+            input.value = '';
+            renderModalSubtasks();
+        }
+    }
+    function toggleSubtask(taskId, subtaskId) {
+        const t = todos.find(x => x.id == taskId);
+        if(t && t.subtasks) {
+            const st = t.subtasks.find(x => x.id == subtaskId);
+            if(st) { st.completed = !st.completed; saveData(); renderCurrentView(); }
+        }
+    }
+    function openModalById(id) {
+        const t = todos.find(x => x.id == id);
+        if(t) { selectedTask = t; openModal(t); } 
+    }
+    function updateTaskStatus(id, type) {
+        const t = todos.find(x => x.id == id);
+        if(t) {
+            if(type === 'todo') { t.completed = false; t.skipped = false; }
+            if(type === 'done') { t.completed = true; t.skipped = false; }
+            if(type === 'skipped') { t.completed = false; t.skipped = true; }
+            saveData(); renderCurrentView();
+        }
+    }
+    
 </script>
 </body>
 </html>
