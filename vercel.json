@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/webdav/:match*",
-      "destination": "https://dav.jianguoyun.com/dav/TDL/:match*"
+      "destination": "https://dav.jianguoyun.com/dav/:match*"
     }
   ]
 }
