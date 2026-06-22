@@ -309,7 +309,81 @@
         .tag-nav-item.drag-over { border-top: 2px solid var(--primary); background: #e8eaed; }
         .sidebar-tags { flex-grow: 1; overflow-y: auto; overflow-x: hidden; margin-top: 10px; padding-bottom: 20px;}
         .project-tag-badge { font-size: 10px; color: #fff; background-color: #607d8b; padding: 1px 5px; border-radius: 4px; margin-right: 5px; }
+        /* 👇 任务模态框 PC 端现代化 UI 升级 👇 */
         
+        /* 1. 让弹窗在 PC 上更宽敞，阴影更高级柔和 */
+        .modal {
+            width: 90%;
+            max-width: 580px !important; /* 从 400px 拓宽到 580px */
+            border-radius: 16px;
+            padding: 30px 35px !important;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.08) !important;
+        }
+
+        /* 2. 顶部大标题（像文档标题一样沉浸，去掉边框） */
+        #inputTask {
+            font-size: 24px !important;
+            font-weight: bold;
+            color: var(--text-main);
+            border: none !important;
+            border-bottom: 2px solid transparent !important;
+            padding: 5px 0 10px 0 !important;
+            transition: all 0.2s ease;
+        }
+        #inputTask:focus {
+            border-bottom: 2px solid var(--primary) !important;
+        }
+        #inputTask::placeholder { color: #ccc; font-weight: normal; }
+
+        /* 3. 现代化输入框样式 (圆角、浅灰底、发光聚焦) */
+        .modal input[type="date"], 
+        .modal select, 
+        .modal textarea,
+        .modal input[type="text"]:not(#inputTask):not(#newSubtaskInput),
+        .modal input[type="number"] {
+            background: #f1f3f4 !important;
+            border: 1px solid transparent !important;
+            border-radius: 8px !important;
+            padding: 10px 12px !important;
+            font-size: 14px !important;
+            color: var(--text-main) !important;
+            transition: all 0.2s ease;
+        }
+        .modal input:focus, .modal select:focus, .modal textarea:focus {
+            background: #fff !important;
+            border-color: var(--primary) !important;
+            box-shadow: 0 0 0 3px var(--primary-light) !important;
+        }
+
+        /* 4. 标签文字美化 */
+        .modal label {
+            font-weight: 500 !important;
+            color: #5f6368 !important;
+            margin-bottom: 6px !important;
+            font-size: 13px !important;
+        }
+
+        /* 5. 修复子任务里的输入框，防止被上面的全局样式误伤 */
+        #modalSubtasks input[type="text"] {
+            background: transparent !important;
+            border: none !important;
+            border-bottom: 1px dashed #ccc !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 4px !important;
+        }
+        #modalSubtasks input[type="text"]:focus {
+            border-bottom: 1px solid var(--primary) !important;
+        }
+
+        /* 6. 手机端智能适配：把并排的输入框改成上下排列，防止挤压 */
+        @media (max-width: 768px) {
+            .modal { padding: 20px !important; }
+            .input-row { flex-direction: column; align-items: stretch; gap: 12px; }
+            .input-row > div { flex: 1 1 auto !important; }
+            #starRating { justify-content: space-between; margin-top: 5px; }
+        }
+        /* 👆 UI 升级结束 👆 */
     </style>
 </head>
 <body>
@@ -728,9 +802,22 @@
     function toggleTask(id) { 
         const t = todos.find(x => x.id == id); 
         if(t) { 
-            if(t.skipped) { t.skipped = false; t.completed = false; } 
-            else { t.completed = !t.completed; }
-            saveData(); renderCurrentView(); 
+            if(t.skipped) { 
+                t.skipped = false; 
+                t.completed = false; 
+            } else { 
+                t.completed = !t.completed; 
+            }
+            
+            // 【新增联动逻辑】让所有子任务的状态跟从大项的状态
+            if (t.subtasks && t.subtasks.length > 0) {
+                t.subtasks.forEach(st => {
+                    st.completed = t.completed;
+                });
+            }
+            
+            saveData(); 
+            renderCurrentView(); 
         } 
     }
 
@@ -740,7 +827,18 @@
             if(type === 'todo') { t.completed = false; t.skipped = false; }
             if(type === 'done') { t.completed = true; t.skipped = false; }
             if(type === 'skipped') { t.completed = false; t.skipped = true; }
-            saveData(); renderCurrentView(); 
+            
+            // 【新增联动逻辑】高级菜单操作时，同步更新子任务
+            if (t.subtasks && t.subtasks.length > 0) {
+                if (type === 'done') {
+                    t.subtasks.forEach(st => st.completed = true);
+                } else if (type === 'todo' || type === 'skipped') {
+                    t.subtasks.forEach(st => st.completed = false);
+                }
+            }
+            
+            saveData(); 
+            renderCurrentView(); 
         }
     }
 
@@ -871,7 +969,21 @@
         const t = todos.find(x => x.id == taskId);
         if(t && t.subtasks) {
             const st = t.subtasks.find(x => x.id == subtaskId);
-            if(st) { st.completed = !st.completed; saveData(); renderCurrentView(); }
+            if(st) { 
+                st.completed = !st.completed; 
+                
+                // 【新增联动逻辑】检查是否所有子任务都已完成
+                const allDone = t.subtasks.every(x => x.completed);
+                if (allDone) {
+                    t.completed = true;
+                    t.skipped = false;
+                } else {
+                    t.completed = false;
+                }
+                
+                saveData(); 
+                renderCurrentView(); 
+            }
         }
     }
 
