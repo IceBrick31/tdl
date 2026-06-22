@@ -1023,14 +1023,22 @@
         }
     }
     function menuAction(action) {
-        if (!selectedTask) return;
-        if (action === 'edit') { openModalById(selectedTask.id); }
-        else if (action === 'status_todo') { updateTaskStatus(selectedTask.id, 'todo'); }
-        else if (action === 'status_done') { updateTaskStatus(selectedTask.id, 'done'); }
-        else if (action === 'status_skipped') { updateTaskStatus(selectedTask.id, 'skipped'); }
-        else if (action === 'delete') { if (confirm('确定彻底删除此任务？')) { todos = todos.filter(t => t.id !== selectedTask.id); saveData(); renderCurrentView(); } } 
+        if (!selectedTask || !selectedTask.id) return;
+        const taskId = selectedTask.id;
+        
+        // 【核心修复】：先强制隐藏右键菜单，防止它和编辑弹窗发生 UI 冲突
+        hideContextMenu(); 
+        
+        if (action === 'edit') { 
+            openModalById(taskId); 
+        }
+        else if (action === 'status_todo') { updateTaskStatus(taskId, 'todo'); }
+        else if (action === 'status_done') { updateTaskStatus(taskId, 'done'); }
+        else if (action === 'status_skipped') { updateTaskStatus(taskId, 'skipped'); }
+        else if (action === 'delete') { if (confirm('确定彻底删除此任务？')) { todos = todos.filter(t => t.id !== taskId); saveData(); renderCurrentView(); } } 
         else if (action === 'deleteFuture') { if (confirm('删除此任务及后续？')) { todos = todos.filter(t => { const isSame = selectedTask.groupId ? (t.groupId === selectedTask.groupId) : (t.text === selectedTask.text); return !(isSame && new Date(t.date) >= new Date(selectedTask.date)); }); saveData(); renderCurrentView(); } }
-        hideContextMenu(); selectedTask = null; 
+        
+        selectedTask = null; 
     }
 
     // --- 8. 视图渲染 (日历、列表、单日) ---
@@ -1144,7 +1152,8 @@
                 const taskObj = {...t, desc: t.desc || ''}; 
                 
                 pill.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); }; 
-                pill.ondblclick = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); }; 
+                // 【新增体验优化】：双击任务条，直接秒开编辑窗口！
+                pill.ondblclick = (e) => { e.preventDefault(); e.stopPropagation(); openModalById(t.id); }; 
                 pill.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); };
                 
                 cell.appendChild(pill);
