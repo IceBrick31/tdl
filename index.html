@@ -975,7 +975,8 @@
                 pill.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); };
                 cell.appendChild(pill);
             });
-            cell.onclick = (e) => { if(e.target === cell || e.target.closest('.day-top')) { document.getElementById('inputDate').value = dateStr; openModal(); } }; body.appendChild(cell);
+            cell.onclick = (e) => { if(e.target.closest('.day-expand-btn')) return; if(e.target === cell || e.target.closest('.day-top')) { document.getElementById('inputDate').value = dateStr; openModal(); } }; body.appendChild(cell);
+                
         }
         setTimeout(() => { const todayCell = body.querySelector('.today'); if (todayCell) todayCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); }, 100);
     }
