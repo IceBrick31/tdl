@@ -976,7 +976,7 @@
                 cell.appendChild(pill);
             });
             cell.onclick = (e) => { if(e.target.closest('.day-expand-btn')) return; if(e.target === cell || e.target.closest('.day-top')) { document.getElementById('inputDate').value = dateStr; openModal(); } }; body.appendChild(cell);
-                
+
         }
         setTimeout(() => { const todayCell = body.querySelector('.today'); if (todayCell) todayCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); }, 100);
     }
@@ -1215,6 +1215,64 @@
                 }
             }
         } catch (error) { loadingEl.style.display = 'none'; alert(`❌ 操作失败:\n${error.message}`); }
+    }
+    function openDailyView(e, dateStr) {
+        e.stopPropagation(); 
+        currentDailyDate = dateStr; 
+        switchView('daily');
+    }
+    
+    function openModalForDaily() {
+        document.getElementById('inputDate').value = currentDailyDate; 
+        openModal();
+    }
+    
+    function renderDailyView() {
+        if (!currentDailyDate) return;
+        const [y, m, d] = currentDailyDate.split('-'); const dateObj = new Date(y, m-1, d);
+        document.getElementById('dailyTitle').innerText = `${y}年${m}月${d}日 (周${"日一二三四五六".charAt(dateObj.getDay())})`;
+        const listEl = document.getElementById('dailyTaskList'); listEl.innerHTML = '';
+        let dayTasks = todos.filter(t => t.date === currentDailyDate);
+        
+        dayTasks.sort((a, b) => { const isDoneA = a.completed || a.skipped ? 1 : 0; const isDoneB = b.completed || b.skipped ? 1 : 0; if (isDoneA !== isDoneB) return isDoneA - isDoneB; return (Number(b.priority)||0) - (Number(a.priority)||0); });
+        if (dayTasks.length === 0) { listEl.innerHTML = '<div style=\"text-align:center; color:#999; padding:30px 10px; font-size:14px;\">📭 这一天很清闲，没有任何任务~</div>'; return; }
+
+        let tasksHtml = '';
+        dayTasks.forEach(t => {
+            const isSkipped = t.skipped; const isDone = t.completed && !isSkipped;
+            const checkedClass = isSkipped ? 'skipped' : (isDone ? 'checked' : '');
+            const textStyle = isSkipped ? 'text-decoration:line-through;color:#d93025;opacity:0.8;' : (isDone ? 'text-decoration:line-through;color:#aaa' : '');
+            const loopTag = t.tag ? `<span style=\"font-size:10px;background:#f1f3f4;padding:1px 4px;border-radius:4px;margin-left:5px;color:#666\">🔄</span>` : '';
+            let catTag = ''; if (t.categoryId) { const cat = config.categories.find(c => c.id === t.categoryId); if (cat) catTag = `<span class=\"cat-tag\" style=\"background-color:${cat.color}\">${cat.name}</span>`; }
+            let projBadge = ''; if (t.projectTag) { projBadge = `<span class=\"project-tag-badge\">#${t.projectTag}</span>`; }
+            const safePrio = Number(t.priority) || 0; const stars = safePrio > 0 ? `<span style=\"font-size:11px; margin-right:4px;\">${'⭐'.repeat(safePrio)}</span>` : '';
+            const durationTag = t.duration ? `<span style=\"font-size:11px; color:#aaa; margin-left:8px; border:1px solid #eee; padding:1px 4px; border-radius:4px;\">⏳ ${t.duration}</span>` : '';
+            
+            let subtasksHtml = '';
+            if(t.subtasks && t.subtasks.length > 0) {
+                subtasksHtml = '<div style=\"margin-top:6px; margin-bottom:4px; display:flex; flex-direction:column; gap:6px; padding-left:10px; border-left:2px solid #eee;\">';
+                t.subtasks.forEach(st => {
+                    const stChecked = st.completed ? 'checked' : ''; const stStyle = st.completed ? 'text-decoration:line-through;color:#aaa' : 'color:#555';
+                    subtasksHtml += `<div style=\"display:flex; align-items:center; font-size:13px;\" onclick=\"event.stopPropagation()\"><div class=\"list-checkbox ${stChecked}\" style=\"width:14px;height:14px;margin-right:8px;border-width:1px;\" onclick=\"toggleSubtask('${t.id}', '${st.id}')\"></div><span style=\"${stStyle}; flex:1;\">${st.text}</span></div>`;
+                }); subtasksHtml += '</div>';
+            }
+            const descHtml = t.desc ? `<div style=\"font-size:12px; color:#777; margin-top:4px; padding:6px; background:#f9f9f9; border-radius:4px; border-left:2px solid #ddd; white-space:pre-wrap;\">${t.desc}</div>` : '';
+
+            tasksHtml += `
+                <div class=\"list-task-row\" style=\"flex-direction: column; align-items: stretch;\">
+                    <div style=\"display:flex; align-items:flex-start;\">
+                        <div class=\"list-checkbox ${checkedClass}\" onclick=\"toggleTask('${t.id}')\"></div>
+                        <div style=\"flex:1; cursor:pointer;\" 
+                             onclick=\"openModalById('${t.id}')\" 
+                             oncontextmenu=\"event.preventDefault(); showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})\">
+                            <div style=\"${textStyle}; line-height:1.4; font-size:15px;\">${catTag}${projBadge}${stars}${t.text}${loopTag}${durationTag}</div>
+                            ${subtasksHtml}
+                            ${descHtml}
+                        </div>
+                    </div>
+                </div>`;
+        });
+        listEl.innerHTML = tasksHtml;
     }
 </script>
 
