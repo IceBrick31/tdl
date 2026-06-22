@@ -296,6 +296,20 @@
         .edit-btn-sm { margin-left:auto; font-size:14px; cursor:pointer; opacity:0.3; padding:5px; transition:0.2s; user-select:none; }
         .edit-btn-sm:hover { opacity:1; transform:scale(1.1); }
         
+        /* 👇 项目标签导航与拖拽样式 👇 */
+        .tag-nav-item { 
+            padding: 10px 24px; font-size: 13px; color: var(--text-sub); 
+            cursor: grab; display: flex; align-items: center; 
+            margin-left: -20px; border-radius: 0 50px 50px 0; transition: background 0.2s;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tag-nav-item:active { cursor: grabbing; }
+        .tag-nav-item:hover { background: #f1f3f4; }
+        .tag-nav-item.active { background: var(--primary-light); color: var(--primary); font-weight: bold; }
+        .tag-nav-item.drag-over { border-top: 2px solid var(--primary); background: #e8eaed; }
+        .sidebar-tags { flex-grow: 1; overflow-y: auto; overflow-x: hidden; margin-top: 10px; padding-bottom: 20px;}
+        .project-tag-badge { font-size: 10px; color: #fff; background-color: #607d8b; padding: 1px 5px; border-radius: 4px; margin-right: 5px; }
+        
     </style>
 </head>
 <body>
@@ -304,7 +318,10 @@
     <div class="logo"><span style="color:#4285F4; font-weight:bold; font-size: 28px;">H</span> &nbsp;Tasks</div>
     <button class="nav-btn" onclick="switchView('calendar')" id="nav-cal-pc"><span>📅</span> 日历</button>
     <button class="nav-btn" onclick="switchView('list')" id="nav-list-pc"><span>📝</span> 列表</button>
-    
+    <div style="font-size:11px; font-weight:bold; color:#888; margin-left:10px; margin-top:25px; margin-bottom:5px; text-transform:uppercase;">🏷️ 项目标签</div>
+    <div id="sidebarTags" class="sidebar-tags">
+        <!-- JS 会在这里动态生成可拖拽的标签 -->
+    </div>
     <div class="action-group">
         <button class="text-btn" onclick="openDataModal()">📂 数据管理</button>
         
@@ -440,6 +457,12 @@
             <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">备注说明 (不显示在列表)</label>
             <textarea id="inputDesc" placeholder="添加详细描述、链接或备注..." style="width:100%; height:60px; padding:8px; border:1px solid #ddd; border-radius:4px; font-family:inherit; font-size:14px; resize:none; box-sizing:border-box;"></textarea>
         </div>
+        <div style="margin-top:12px;">
+            <label style="font-size:12px; color:#666; display:block; margin-bottom:4px;">🏷️ 所属项目 / 标签 (输入新名称，或双击选择已有)</label>
+            <input type="text" id="inputProjectTag" list="projectTagList" placeholder="例如: XX期研发 / 旅游攻略" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            <datalist id="projectTagList"></datalist> <!-- 存放下拉记忆 -->
+        </div>
+
         <div style="margin-top:12px; background:#f8f9fa; padding:10px; border-radius:8px; border:1px solid #eee;">
             <label style="font-size:12px; font-weight:bold; color:#444; display:block; margin-bottom:8px;">✅ 子任务拆解 (把大任务切小)</label>
             <div id="modalSubtasks" style="margin-bottom: 8px;"></div>
@@ -629,6 +652,7 @@
 
     function init() {
         document.getElementById('inputDate').valueAsDate = new Date();
+        updateProjectTags(); // 【新增】: 初始化时生成侧边栏标签和记忆框
         switchView('calendar');
         fetchWeather(); 
         
@@ -1341,19 +1365,23 @@
             saveData(); renderCurrentView(); 
         } 
     }
-    function switchView(view) {
+    function switchView(view, filterTag = null) {
+        currentFilterTag = filterTag; // 更新全局状态
         document.querySelectorAll('.view-container').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.nav-btn, .bottom-nav-item').forEach(el => el.classList.remove('active'));
         
+        // 点亮侧边栏对应的标签
+        renderSidebarTags(); 
+
         let targetId = 'calendarView';
-        if (view === 'list') targetId = 'listView';
+        if (view === 'list' || view === 'tag') targetId = 'listView';
         if (view === 'daily') targetId = 'dailyView';
         document.getElementById(targetId).classList.add('active');
         
-        // 处理底部/侧边导航高亮
-        document.querySelectorAll('.nav-btn, .bottom-nav-item').forEach(el => el.classList.remove('active'));
         if(view === 'calendar') { ['nav-cal-pc','nav-cal-mob'].forEach(id => document.getElementById(id)?.classList.add('active')); renderCalendar(); }
         else if(view === 'list') { ['nav-list-pc','nav-list-mob'].forEach(id => document.getElementById(id)?.classList.add('active')); renderList(); }
-        else if(view === 'daily') { renderDailyView(); } // 单日视图不点亮导航栏，表示它是日历的子层级
+        else if(view === 'tag') { renderList(); } // 如果是标签视图，复用 renderList
+        else if(view === 'daily') { renderDailyView(); } 
     }
 
     function renderCurrentView() { 
@@ -1386,18 +1414,13 @@
             }
         });
     }
-    // --- 2. 打开弹窗 (控制星星的回显) ---
-    function openModal(taskToEdit = null) {
-        const overlay = document.getElementById('modalOverlay');
-        const modal = overlay.querySelector('.modal');
-        const title = document.getElementById('modalTitle');
-        const taskInput = document.getElementById('inputTask');
-        const dateInput = document.getElementById('inputDate');
-        const catSelect = document.getElementById('inputCategory');
-        const durationInput = document.getElementById('inputDuration'); 
-        const descInput = document.getElementById('inputDesc');
-        const recurSection = document.getElementById('recurrenceSection');
-        const editHint = document.getElementById('editModeHint');
+function openModal(taskToEdit = null) {
+        const overlay = document.getElementById('modalOverlay'); const modal = overlay.querySelector('.modal');
+        const title = document.getElementById('modalTitle'); const taskInput = document.getElementById('inputTask');
+        const dateInput = document.getElementById('inputDate'); const catSelect = document.getElementById('inputCategory');
+        const durationInput = document.getElementById('inputDuration'); const descInput = document.getElementById('inputDesc');
+        const projInput = document.getElementById('inputProjectTag'); // 获取标签框
+        const recurSection = document.getElementById('recurrenceSection'); const editHint = document.getElementById('editModeHint');
         const btnCopy = document.getElementById('btnCopy'); 
         
         catSelect.innerHTML = '<option value="">默认 (无分类)</option>';
@@ -1410,6 +1433,7 @@
             catSelect.value = taskToEdit.categoryId || '';
             if(durationInput) durationInput.value = taskToEdit.duration || ''; 
             if(descInput) descInput.value = taskToEdit.desc || ''; 
+            if(projInput) projInput.value = taskToEdit.projectTag || ''; // 回显项目标签
             setPriority(Number(taskToEdit.priority) || 0);
             recurSection.style.display = 'none'; editHint.style.display = 'block';
             if(btnCopy) btnCopy.style.display = 'block'; 
@@ -1419,67 +1443,56 @@
             if(!dateInput.value) dateInput.valueAsDate = new Date();
             catSelect.value = '';
             if(durationInput) durationInput.value = ''; if(descInput) descInput.value = ''; 
+            if(projInput) projInput.value = currentFilterTag || ''; // 如果在某标签下新建，默认带入
             setPriority(0);
             recurSection.style.display = 'block'; editHint.style.display = 'none';
             document.getElementById('recurUnit').value = 'none'; document.getElementById('endDateRow').style.display = 'none';
             if(btnCopy) btnCopy.style.display = 'none';
             tempSubtasks = [];
         }
-        renderModalSubtasks();
-        document.getElementById('newSubtaskInput').value = '';
-        taskInput.focus();
+        renderModalSubtasks(); document.getElementById('newSubtaskInput').value = ''; taskInput.focus();
     }
 
-    // --- 3. 保存任务 (控制星星数据的存入) ---
     function addTask() {
-        const text = document.getElementById('inputTask').value.trim();
-        const dateVal = document.getElementById('inputDate').value;
+        const text = document.getElementById('inputTask').value.trim(); const dateVal = document.getElementById('inputDate').value;
         const catId = document.getElementById('inputCategory').value;
         const duration = document.getElementById('inputDuration') ? document.getElementById('inputDuration').value : ''; 
         const desc = document.getElementById('inputDesc') ? document.getElementById('inputDesc').value.trim() : '';
+        const projTag = document.getElementById('inputProjectTag') ? document.getElementById('inputProjectTag').value.trim() : ''; // 获取项目标签
         const priority = Number(document.getElementById('inputPriority').value) || 0;
         const interval = parseInt(document.getElementById('recurInterval').value) || 1;
-        const unit = document.getElementById('recurUnit').value;
-        const endDateVal = document.getElementById('inputEndDate').value;
+        const unit = document.getElementById('recurUnit').value; const endDateVal = document.getElementById('inputEndDate').value;
         
         if (!text || !dateVal) return alert("请输入内容和日期");
 
         if (editingTaskId) {
             const taskIndex = todos.findIndex(t => t.id === editingTaskId);
             if (taskIndex > -1) {
-                todos[taskIndex].text = text; todos[taskIndex].date = dateVal;
-                todos[taskIndex].categoryId = catId; todos[taskIndex].duration = duration; 
-                todos[taskIndex].desc = desc; todos[taskIndex].priority = priority;
+                todos[taskIndex].text = text; todos[taskIndex].date = dateVal; todos[taskIndex].categoryId = catId; 
+                todos[taskIndex].duration = duration; todos[taskIndex].desc = desc; todos[taskIndex].priority = priority;
+                todos[taskIndex].projectTag = projTag; // 存入项目标签
                 todos[taskIndex].subtasks = JSON.parse(JSON.stringify(tempSubtasks));
             }
         } else {
             const groupId = Date.now().toString(); const newTasks = [];
             const createOne = (dStr) => ({ 
                 id: Math.random().toString(36).substr(2, 9), groupId, text, date: dStr, completed: false, skipped: false,
-                categoryId: catId, duration: duration, desc: desc, priority: priority, 
-                subtasks: JSON.parse(JSON.stringify(tempSubtasks)),
-                tag: unit !== 'none' ? '循环' : '' 
+                categoryId: catId, duration: duration, desc: desc, priority: priority, projectTag: projTag, // 存入项目标签
+                subtasks: JSON.parse(JSON.stringify(tempSubtasks)), tag: unit !== 'none' ? '循环' : '' 
             });
 
             if (unit === 'none') { newTasks.push(createOne(dateVal)); } else {
-                let cursor = new Date(dateVal);
-                let stopDate = endDateVal ? new Date(endDateVal) : new Date(cursor);
-                if (!endDateVal) stopDate.setFullYear(stopDate.getFullYear() + 1);
-                let safeCount = 0;
+                let cursor = new Date(dateVal); let stopDate = endDateVal ? new Date(endDateVal) : new Date(cursor);
+                if (!endDateVal) stopDate.setFullYear(stopDate.getFullYear() + 1); let safeCount = 0;
                 while (cursor <= stopDate && safeCount < 500) {
-                    newTasks.push(createOne(cursor.toISOString().split('T')[0]));
-                    const originalDay = cursor.getDate();
-                    switch (unit) {
-                        case 'day': cursor.setDate(cursor.getDate() + interval); break;
-                        case 'week': cursor.setDate(cursor.getDate() + (interval * 7)); break;
-                        case 'month': cursor.setMonth(cursor.getMonth() + interval); if (cursor.getDate() !== originalDay) cursor.setDate(0); break;
-                        case 'year': cursor.setFullYear(cursor.getFullYear() + interval); break;
-                    } safeCount++;
+                    newTasks.push(createOne(cursor.toISOString().split('T')[0])); const originalDay = cursor.getDate();
+                    switch (unit) { case 'day': cursor.setDate(cursor.getDate() + interval); break; case 'week': cursor.setDate(cursor.getDate() + (interval * 7)); break; case 'month': cursor.setMonth(cursor.getMonth() + interval); if (cursor.getDate() !== originalDay) cursor.setDate(0); break; case 'year': cursor.setFullYear(cursor.getFullYear() + interval); break; } safeCount++;
                 }
             } todos = [...todos, ...newTasks];
         }
         saveData(); closeModal(); renderCurrentView();
     }
+
     // --- 复制任务逻辑 ---
     function copyTask() {
         if(!confirm('确定要复制当前内容为一个新任务吗？')) return;
@@ -1494,7 +1507,10 @@
     function openDataModal() { document.getElementById('dataModal').style.display = 'flex'; }
     function closeDataModal() { document.getElementById('dataModal').style.display = 'none'; }
     document.getElementById('recurUnit').addEventListener('change', function() { document.getElementById('endDateRow').style.display = this.value === 'none' ? 'none' : 'flex'; });
-    function saveData() { localStorage.setItem('gTasksData_v3', JSON.stringify(todos)); }
+    function saveData() { 
+        localStorage.setItem('gTasksData_v3', JSON.stringify(todos)); 
+        updateProjectTags(); // 【修改】：每次保存数据时，自动扫描并刷新标签导航！
+    }
     
     // --- 升级后的导出逻辑 (带配置) ---
     function exportData() { 
@@ -1599,6 +1615,58 @@
             saveData(); 
             renderCurrentView(); // 立刻刷新界面
         }
+    }
+    // 👇 新增：项目标签的核心控制逻辑 👇
+    let currentFilterTag = null; // 记录当前点选的标签
+
+    // 自动扫描所有的任务，提取唯一的标签并更新到侧边栏
+    function updateProjectTags() {
+        const currentTags = [...new Set(todos.map(t => t.projectTag).filter(Boolean))];
+        if (!config.projectTags) config.projectTags = [];
+        
+        // 加入新冒出来的标签
+        currentTags.forEach(tag => { if (!config.projectTags.includes(tag)) config.projectTags.push(tag); });
+        // 清理掉已经没有任何任务使用的空标签
+        config.projectTags = config.projectTags.filter(tag => currentTags.includes(tag));
+        
+        localStorage.setItem('gTasksConfig', JSON.stringify(config));
+        renderSidebarTags();
+        
+        // 更新表单下拉框的记忆选项
+        const datalist = document.getElementById('projectTagList');
+        if(datalist) datalist.innerHTML = config.projectTags.map(tag => `<option value="${tag}">`).join('');
+    }
+
+    // 渲染左侧的拖拽标签
+    function renderSidebarTags() {
+        const container = document.getElementById('sidebarTags');
+        if(!container) return;
+        container.innerHTML = '';
+        
+        config.projectTags.forEach((tag, index) => {
+            const el = document.createElement('div');
+            el.className = `tag-nav-item ${currentFilterTag === tag ? 'active' : ''}`;
+            el.innerHTML = `<span>#</span>&nbsp; ${tag}`;
+            el.draggable = true;
+            
+            // 拖拽核心事件
+            el.ondragstart = (e) => { e.dataTransfer.setData('text/plain', index); };
+            el.ondragover = (e) => { e.preventDefault(); el.classList.add('drag-over'); };
+            el.ondragleave = (e) => { el.classList.remove('drag-over'); };
+            el.ondrop = (e) => {
+                e.preventDefault(); el.classList.remove('drag-over');
+                const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+                if (fromIndex !== index) {
+                    const [moved] = config.projectTags.splice(fromIndex, 1);
+                    config.projectTags.splice(index, 0, moved);
+                    updateProjectTags(); // 存库并重新渲染
+                }
+            };
+            
+            // 点击筛选
+            el.onclick = () => { switchView('tag', tag); };
+            container.appendChild(el);
+        });
     }
     
 </script>
