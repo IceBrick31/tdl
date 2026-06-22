@@ -923,64 +923,143 @@
 
     // --- 8. 视图渲染 (日历、列表、单日) ---
     function renderCalendar() {
-        const body = document.getElementById('calBody'); const title = document.getElementById('calTitle'); body.innerHTML = '';
-        const y = currentCalDate.getFullYear(); const m = currentCalDate.getMonth(); title.innerText = `${y}年 ${m + 1}月`;
-        let firstDay = new Date(y, m, 1).getDay(); const emptyCells = (firstDay + 6) % 7; const daysInMonth = new Date(y, m + 1, 0).getDate();
+        const body = document.getElementById('calBody'); 
+        const title = document.getElementById('calTitle'); 
+        body.innerHTML = '';
+        const y = currentCalDate.getFullYear(); 
+        const m = currentCalDate.getMonth(); 
+        title.innerText = `${y}年 ${m + 1}月`;
+        let firstDay = new Date(y, m, 1).getDay(); 
+        const emptyCells = (firstDay + 6) % 7; 
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
 
-        for(let i=0; i<emptyCells; i++) { const cell = document.createElement('div'); cell.className = 'day-cell other-month'; body.appendChild(cell); }
+        for(let i=0; i<emptyCells; i++) { 
+            const cell = document.createElement('div'); 
+            cell.className = 'day-cell other-month'; 
+            body.appendChild(cell); 
+        }
 
         const todayStr = new Date().toISOString().split('T')[0];
 
         for(let d=1; d<=daysInMonth; d++) {
-            const cell = document.createElement('div'); const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-            const dateObj = new Date(y, m, d); const dayOfWeek = dateObj.getDay();
-            let classes = ['day-cell']; if (dateStr === todayStr) classes.push('today'); if (dayOfWeek === 0 || dayOfWeek === 6) classes.push('weekend-cell'); cell.className = classes.join(' ');
+            const cell = document.createElement('div'); 
+            const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const dateObj = new Date(y, m, d); 
+            const dayOfWeek = dateObj.getDay();
+            let classes = ['day-cell']; 
+            if (dateStr === todayStr) classes.push('today'); 
+            if (dayOfWeek === 0 || dayOfWeek === 6) classes.push('weekend-cell'); 
+            cell.className = classes.join(' ');
 
-            let lunarHtml = ''; try { const lunar = Lunar.fromDate(dateObj); let dayText = lunar.getDayInChinese(); let isFestival = false; const festivals = lunar.getFestivals(); const jieQi = lunar.getJieQi(); if (festivals.length > 0) { dayText = festivals[0]; isFestival = true; } else if (jieQi) { dayText = jieQi; isFestival = true; } else if (dayText === '初一') { dayText = lunar.getMonthInChinese() + '月'; } lunarHtml = `<span class='lunar-text ${isFestival?'festival':''}'>${dayText}</span>`; } catch(e) {}
-            let weatherHtml = ''; const w = weatherData[dateStr]; if (w) { const icon = weatherIcons[w.code] || ''; weatherHtml = `<span class='day-weather'>${icon} ${w.min}°</span>`; }
+            let lunarHtml = ''; 
+            try { 
+                const lunar = Lunar.fromDate(dateObj); 
+                let dayText = lunar.getDayInChinese(); 
+                let isFestival = false; 
+                const festivals = lunar.getFestivals(); 
+                const jieQi = lunar.getJieQi(); 
+                if (festivals.length > 0) { dayText = festivals[0]; isFestival = true; } 
+                else if (jieQi) { dayText = jieQi; isFestival = true; } 
+                else if (dayText === '初一') { dayText = lunar.getMonthInChinese() + '月'; } 
+                lunarHtml = `<span class="lunar-text ${isFestival?'festival':''}">${dayText}</span>`; 
+            } catch(e) {}
+
+            let weatherHtml = ''; 
+            const w = weatherData[dateStr]; 
+            if (w) { 
+                const icon = weatherIcons[w.code] || ''; 
+                weatherHtml = `<span class="day-weather">${icon} ${w.min}°</span>`; 
+            }
             
+            // 【核心修改1】：去掉了按钮上容易崩溃报错的 inline onclick
             cell.innerHTML = `
-                <div class='day-top'>
-                    <div style='display:flex; align-items:center;'>
-                        <div class='day-number'>${d}</div>
-                        <button class='day-expand-btn' title='查看单日详情' onclick='openDailyView(event, '${dateStr}')'>⤢</button>
+                <div class="day-top">
+                    <div style="display:flex; align-items:center;">
+                        <div class="day-number">${d}</div>
+                        <button class="day-expand-btn" title="查看单日详情">⤢</button>
                     </div>
-                    <div style='display:flex; flex-direction:column; align-items:flex-end;'>${lunarHtml}${weatherHtml}</div>
+                    <div style="display:flex; flex-direction:column; align-items:flex-end;">${lunarHtml}${weatherHtml}</div>
                 </div>`;
 
             let dayTasks = todos.filter(t => t.date === dateStr);
             dayTasks.sort((a, b) => {
-                const isDoneA = a.completed || a.skipped ? 1 : 0; const isDoneB = b.completed || b.skipped ? 1 : 0;
+                const isDoneA = a.completed || a.skipped ? 1 : 0; 
+                const isDoneB = b.completed || b.skipped ? 1 : 0;
                 if (isDoneA !== isDoneB) return isDoneA - isDoneB;
-                const prioA = Number(a.priority) || 0; const prioB = Number(b.priority) || 0; return prioB - prioA; 
+                const prioA = Number(a.priority) || 0; 
+                const prioB = Number(b.priority) || 0; 
+                return prioB - prioA; 
             });
 
             dayTasks.forEach(t => {
-                const pill = document.createElement('div'); const isSkipped = t.skipped; const isDone = t.completed && !isSkipped;
+                const pill = document.createElement('div');
+                const isSkipped = t.skipped; 
+                const isDone = t.completed && !isSkipped;
                 pill.className = `cal-task-pill ${isSkipped ? 'skipped' : (isDone ? 'completed' : '')}`;
                 
-                if (t.categoryId) { const cat = config.categories.find(c => c.id === t.categoryId); if (cat) { pill.style.borderLeftColor = cat.color; if (!isDone && !isSkipped) pill.style.color = cat.color; } }
-                if (isSkipped) { pill.style.borderLeftColor = '#d93025'; pill.style.color = '#d93025'; pill.style.backgroundColor = '#fce8e6'; pill.style.textDecoration = 'line-through'; }
+                if (t.categoryId) { 
+                    const cat = config.categories.find(c => c.id === t.categoryId); 
+                    if (cat) { 
+                        pill.style.borderLeftColor = cat.color; 
+                        if (!isDone && !isSkipped) pill.style.color = cat.color; 
+                    } 
+                }
 
-                const descIcon = t.desc ? ' 📝' : ''; const safePrio = Number(t.priority) || 0; const stars = safePrio > 0 ? `<span style='font-size:9px; letter-spacing:-3px; margin-right:4px;'>${'⭐'.repeat(safePrio)}</span>` : '';
-                let timeHtml = ''; if (t.duration) timeHtml = `<span style='float:right; font-size:10px; opacity:0.8; font-weight:bold; margin-left:4px; margin-top:2px;'>${t.duration}</span>`;
-                let stCount = ''; if(t.subtasks && t.subtasks.length > 0) { const doneC = t.subtasks.filter(x=>x.completed).length; stCount = `<span style='font-size:10px; color:inherit; opacity:0.8; margin-left:4px;'>[${doneC}/${t.subtasks.length}]</span>`; }
+                if (isSkipped) {
+                    pill.style.borderLeftColor = '#d93025';
+                    pill.style.color = '#d93025';
+                    pill.style.backgroundColor = '#fce8e6';
+                    pill.style.textDecoration = 'line-through';
+                }
+
+                const descIcon = t.desc ? ' 📝' : ''; 
+                const safePrio = Number(t.priority) || 0; 
+                const stars = safePrio > 0 ? `<span style="font-size:9px; letter-spacing:-3px; margin-right:4px;">${'⭐'.repeat(safePrio)}</span>` : '';
+                
+                let timeHtml = ''; 
+                if (t.duration) timeHtml = `<span style="float:right; font-size:10px; opacity:0.8; font-weight:bold; margin-left:4px; margin-top:2px;">${t.duration}</span>`;
+                
+                let stCount = ''; 
+                if(t.subtasks && t.subtasks.length > 0) { 
+                    const doneC = t.subtasks.filter(x=>x.completed).length; 
+                    stCount = `<span style="font-size:10px; color:inherit; opacity:0.8; margin-left:4px;">[${doneC}/${t.subtasks.length}]</span>`; 
+                }
                 
                 pill.style.display = 'block';
-                pill.innerHTML = `${timeHtml}${stars}<span style='word-break:break-word; line-height:1.2;'>${t.text}${stCount}${descIcon}</span>`;
-                if (t.desc) pill.title = t.desc; const taskObj = {...t, desc: t.desc || ''}; 
+                pill.innerHTML = `${timeHtml}${stars}<span style="word-break:break-word; line-height:1.2;">${t.text}${stCount}${descIcon}</span>`;
+                if (t.desc) pill.title = t.desc; 
+                
+                const taskObj = {...t, desc: t.desc || ''}; 
                 
                 pill.onclick = (e) => { e.stopPropagation(); toggleTask(t.id); }; 
                 pill.ondblclick = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); }; 
                 pill.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); showContextMenu(e, taskObj); };
+                
                 cell.appendChild(pill);
             });
-            cell.onclick = (e) => { if(e.target.closest('.day-expand-btn')) return; if(e.target === cell || e.target.closest('.day-top')) { document.getElementById('inputDate').value = dateStr; openModal(); } }; body.appendChild(cell);
-
+            
+            // 【核心修改2】：在这里完美拦截并直接接管按钮的点击跳转
+            cell.onclick = (e) => { 
+                if (e.target.closest('.day-expand-btn')) {
+                    currentDailyDate = dateStr;
+                    switchView('daily');
+                    return; // 拦截完毕直接退出，绝不会弹新建窗口！
+                }
+                if(e.target === cell || e.target.closest('.day-top')) { 
+                    document.getElementById('inputDate').value = dateStr; 
+                    openModal(); 
+                } 
+            }; 
+            body.appendChild(cell);
         }
-        setTimeout(() => { const todayCell = body.querySelector('.today'); if (todayCell) todayCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' }); }, 100);
+        setTimeout(() => {
+            const todayCell = body.querySelector('.today');
+            if (todayCell) {
+                todayCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            }
+        }, 100);
     }
-
+    
     function renderList() {
         const listEl = document.getElementById('taskList'); listEl.innerHTML = '';
         
