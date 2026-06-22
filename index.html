@@ -557,11 +557,10 @@
         <!-- 3. WebDAV (保持不变) -->
         <div class="section-title">☁️ WebDAV 云盘配置</div>
         <div style="background:#f8f9fa; padding:10px; border-radius:8px;">
-            <label style="font-size:11px;color:#666;">WebDAV 地址 (Netlify 专用填法):</label>
-            <input type="text" id="wdUrl" placeholder="输入 /webdav/" style="margin-bottom:8px; font-weight:bold;">
+            <label style="font-size:11px;color:#666;">WebDAV 地址:</label>
+            <input type="text" id="wdUrl" placeholder="（目前默认是/webdav/TDL"，如你想保存的文件夹名非TDL，请自己更新TDL为你需要的文件夹名称） style="margin-bottom:8px; font-weight:bold;">
             <input type="text" id="wdUser" placeholder="坚果云账号/邮箱" style="margin-bottom:8px;">
             <input type="password" id="wdPass" placeholder="应用专用密码">
-            <p style="font-size:10px; color:#d93025; margin:5px 0;">* 注意：为了解决报错，地址栏请务必填写 <b>/webdav/</b></p>
         </div>
 
         <div style="display:flex;justify-content:flex-end;gap:10px; margin-top:15px;">
@@ -580,7 +579,7 @@
     // 1. 升级默认配置，加入 categories
     const defaultConf = { 
         city: 'shanghai', lat: 31.23, lon: 121.47, name: '上海',
-        webdav: { url: '', user: '', pass: '' },
+        webdav: { url: '/webdav/TDL/', user: '', pass: '' },
         // 默认分类
         categories: [
             { id: 'work', name: '工作', color: '#1a73e8' },
@@ -588,10 +587,17 @@
             { id: 'urgent', name: '紧急', color: '#d93025' }
         ]
     };
+    
     let config = JSON.parse(localStorage.getItem('gTasksConfig')) || defaultConf;
-    // 兼容旧版，如果旧版没有 categories，补上
+    
+    // 兼容旧版配置修复
     if (!config.categories) config.categories = defaultConf.categories;
-    if (!config.webdav) config.webdav = { url: '', user: '', pass: '' };
+    if (!config.webdav) config.webdav = { url: '/webdav/TDL/', user: '', pass: '' };
+    
+    // 【核心补丁】：如果老用户的浏览器里存的是空的，或者存的是旧版的 "/webdav/"，自动帮他升级成 TDL
+    if (!config.webdav.url || config.webdav.url === '/webdav/') {
+        config.webdav.url = '/webdav/TDL/';
+    }
     
     let currentCalDate = new Date();
     let selectedTask = null; 
@@ -836,9 +842,10 @@
         }
 
         if (config.webdav) {
-            document.getElementById('wdUrl').value = config.webdav.url || '/webdav/';
-            document.getElementById('wdUser').value = config.webdav.user || '';
-            document.getElementById('wdPass').value = config.webdav.pass || '';
+            // 直接读取变量，它是什么就显示什么，没有任何伪装
+            document.getElementById('wdUrl').value = config.webdav.url;
+            document.getElementById('wdUser').value = config.webdav.user;
+            document.getElementById('wdPass').value = config.webdav.pass;
         }
         closeDataModal(); 
     }
@@ -1079,6 +1086,12 @@
             }; 
             body.appendChild(cell);
         }
+        setTimeout(() => {
+            const todayCell = body.querySelector('.today');
+            if (todayCell) {
+                todayCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+            }
+        }, 100);
     }
 
     // --- 保存任务 ---
