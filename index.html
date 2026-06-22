@@ -988,23 +988,32 @@
     }
 
     // --- 7. 右键菜单控制 ---
+    // 1. 彻底重写右键菜单生成逻辑，直接绑定任务 ID，切断一切冲突可能
     function showContextMenu(e, task) {
-        selectedTask = task; const menu = document.getElementById('contextMenu');
+        const menu = document.getElementById('contextMenu');
         let descHtml = '';
-        if (task.desc) { descHtml = `<div style='padding:10px 15px; font-size:12px; color:#555; background:#fffbe6; border-bottom:1px solid #eee; line-height:1.4; max-height:100px; overflow-y:auto; white-space:pre-wrap;'><b>📝 备注：</b><br>${task.desc}</div>`; }
+        if (task.desc) { 
+            descHtml = `<div style="padding:10px 15px; font-size:12px; color:#555; background:#fffbe6; border-bottom:1px solid #eee; line-height:1.4; max-height:100px; overflow-y:auto; white-space:pre-wrap;"><b>📝 备注：</b><br>${task.desc}</div>`; 
+        }
+        
+        // 【核心修复】：直接把 task.id 注入到点击事件里，并且加上 event.stopPropagation() 绝对拦截冒泡
         menu.innerHTML = `
             ${descHtml}
-            <div class='context-menu-item' onclick='menuAction('edit')'><span>✏️</span> 编辑详细信息</div>
-            <div style='height:1px; background:#eee; margin:2px 0;'></div>
-            <div class='context-menu-item' onclick='menuAction('status_todo')'><span>🔄</span> 恢复为待办状态</div>
-            <div class='context-menu-item' onclick='menuAction('status_done')'><span>✅</span> 标记为完美完成</div>
-            <div class='context-menu-item' onclick='menuAction('status_skipped')' style='color:#d93025;'><span>❌</span> 标记未做/搁置此项</div>
-            <div style='height:1px; background:#eee; margin:2px 0;'></div>
-            <div class='context-menu-item danger' onclick='menuAction('delete')'><span>🗑️</span> 彻底删除此条记录</div>
-            <div class='context-menu-item danger' onclick='menuAction('deleteFuture')'><span>⏩</span> 删除此条及后续循环</div>
-            <div class='context-menu-item' onclick='hideContextMenu()' style='justify-content:center; color:#666; border-top:5px solid #f5f5f7; margin-top:5px;'>取消</div>
+            <div class="context-menu-item" onclick="event.stopPropagation(); hideContextMenu(); openModalById('${task.id}');"><span>✏️</span> 编辑详细信息</div>
+            <div style="height:1px; background:#eee; margin:2px 0;"></div>
+            <div class="context-menu-item" onclick="event.stopPropagation(); hideContextMenu(); updateTaskStatus('${task.id}', 'todo');"><span>🔄</span> 恢复为待办状态</div>
+            <div class="context-menu-item" onclick="event.stopPropagation(); hideContextMenu(); updateTaskStatus('${task.id}', 'done');"><span>✅</span> 标记为完美完成</div>
+            <div class="context-menu-item" onclick="event.stopPropagation(); hideContextMenu(); updateTaskStatus('${task.id}', 'skipped');" style="color:#d93025;"><span>❌</span> 标记未做/搁置此项</div>
+            <div style="height:1px; background:#eee; margin:2px 0;"></div>
+            <div class="context-menu-item danger" onclick="event.stopPropagation(); hideContextMenu(); deleteSingleTask('${task.id}');"><span>🗑️</span> 彻底删除此条记录</div>
+            <div class="context-menu-item danger" onclick="event.stopPropagation(); hideContextMenu(); deleteFutureTasks('${task.id}');"><span>⏩</span> 删除此条及后续循环</div>
+            <div class="context-menu-item" onclick="event.stopPropagation(); hideContextMenu();" style="justify-content:center; color:#666; border-top:5px solid #f5f5f7; margin-top:5px;">取消</div>
         `;
-        if(window.innerWidth <= 768) { document.getElementById('modalOverlay').style.display = 'block'; document.querySelector('.modal').style.display = 'none'; }
+        
+        if(window.innerWidth <= 768) { 
+            document.getElementById('modalOverlay').style.display = 'block'; 
+            document.querySelector('.modal').style.display = 'none'; 
+        }
         menu.style.display = 'block';
         if(window.innerWidth > 768) {
             let x = e.clientX; let y = e.clientY; const rect = menu.getBoundingClientRect();
@@ -1013,6 +1022,29 @@
             menu.style.left = x + 'px'; menu.style.top = y + 'px';
         }
     }
+
+    // 2. 新增两个独立的删除函数 (替代原来容易报错的 menuAction)
+    function deleteSingleTask(id) {
+        if (confirm('确定彻底删除此任务？')) { 
+            todos = todos.filter(t => t.id !== id); 
+            saveData(); 
+            renderCurrentView(); 
+        }
+    }
+
+    function deleteFutureTasks(id) {
+        const task = todos.find(t => t.id === id);
+        if (!task) return;
+        if (confirm('删除此任务及后续？')) { 
+            todos = todos.filter(t => { 
+                const isSame = task.groupId ? (t.groupId === task.groupId) : (t.text === task.text); 
+                return !(isSame && new Date(t.date) >= new Date(task.date)); 
+            }); 
+            saveData(); 
+            renderCurrentView(); 
+        }
+    }
+
     function hideContextMenu() {
         document.getElementById('contextMenu').style.display = 'none';
         if(window.innerWidth <= 768) { 
@@ -1022,25 +1054,7 @@
             } 
         }
     }
-    function menuAction(action) {
-        if (!selectedTask || !selectedTask.id) return;
-        const taskId = selectedTask.id;
-        
-        // 【核心修复】：先强制隐藏右键菜单，防止它和编辑弹窗发生 UI 冲突
-        hideContextMenu(); 
-        
-        if (action === 'edit') { 
-            openModalById(taskId); 
-        }
-        else if (action === 'status_todo') { updateTaskStatus(taskId, 'todo'); }
-        else if (action === 'status_done') { updateTaskStatus(taskId, 'done'); }
-        else if (action === 'status_skipped') { updateTaskStatus(taskId, 'skipped'); }
-        else if (action === 'delete') { if (confirm('确定彻底删除此任务？')) { todos = todos.filter(t => t.id !== taskId); saveData(); renderCurrentView(); } } 
-        else if (action === 'deleteFuture') { if (confirm('删除此任务及后续？')) { todos = todos.filter(t => { const isSame = selectedTask.groupId ? (t.groupId === selectedTask.groupId) : (t.text === selectedTask.text); return !(isSame && new Date(t.date) >= new Date(selectedTask.date)); }); saveData(); renderCurrentView(); } }
-        
-        selectedTask = null; 
-    }
-
+    
     // --- 8. 视图渲染 (日历、列表、单日) ---
     function renderCalendar() {
         const body = document.getElementById('calBody'); 
@@ -1463,8 +1477,8 @@
                     <div style=\"display:flex; align-items:flex-start;\">
                         <div class=\"list-checkbox ${checkedClass}\" onclick=\"toggleTask('${t.id}')\"></div>
                         <div style=\"flex:1; cursor:pointer;\" 
-                             onclick=\"openModalById('${t.id}')\" 
-                             oncontextmenu=\"event.preventDefault(); showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})\">
+                            onclick=\"openModalById('${t.id}')\" 
+                            oncontextmenu=\"event.preventDefault(); showContextMenu(event, {id:'${t.id}', text:'${t.text}', groupId:'${t.groupId}', date:'${t.date}', categoryId:'${t.categoryId}', desc:'${t.desc||''}'})\">
                             <div style=\"${textStyle}; line-height:1.4; font-size:15px;\">${catTag}${projBadge}${stars}${t.text}${loopTag}${durationTag}</div>
                             ${subtasksHtml}
                             ${descHtml}
